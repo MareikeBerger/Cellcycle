@@ -1,0 +1,5 @@
+{"ROOT_PATH": "/home/berger/Documents/Arbeit/PhD/data/UltrasensitivityCombined/", 
+"FILE_NAME": "vary_growth_rate",
+"CODE_PATH":"/home/berger/Documents/Arbeit/PhD/MyCode/MechanisticCellCycle/cellcycle",
+"INPUT_FILE_PATH": "/home/berger/Documents/Arbeit/PhD/data/UltrasensitivityCombined/new_test/parameter_set.csv",
+"MAKE_NEW_PARAMETER_SET": true}
