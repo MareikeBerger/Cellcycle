@@ -39,13 +39,13 @@ def start_simulation(file_path, confirm):
 def data_frame_from_existing_parameter_set(input_file_path):
     return pd.read_csv(input_file_path, sep=';')
 
-def data_frame_from_new_parameter_set(code_path):
+def data_frame_from_new_parameter_set():
     # make an instance of parameterSet class containing all parameters
-    parameter_set = ParameterSet(code_path)
+    parameter_set = ParameterSet()
     return parameter_set.parameter_set_df
 
 def run_simulations(data_frame_params, confirm, file_name, file_path, parameter_path):
-    # Based on given root_path, file_name and code_path makes paths for storing data
+    # Based on given root_path, file_name makes paths for storing data
     series_names = filePathTools.make_series_names(file_name, data_frame_params["id"])
     series_paths = filePathTools.make_series_paths(file_path, series_names)
     dataset_paths = filePathTools.make_dataset_paths(series_paths)
@@ -112,7 +112,7 @@ def main(file_path_input_params_json, confirm=None):
     file_path = filePathTools.make_file_path(input_param_dict["ROOT_PATH"], input_param_dict["FILE_NAME"])
     parameter_path = filePathTools.make_parameter_path(file_path)
     if input_param_dict["MAKE_NEW_PARAMETER_SET"]:
-        data_frame_params = data_frame_from_new_parameter_set(input_param_dict["CODE_PATH"])
+        data_frame_params = data_frame_from_new_parameter_set()
     else:
         data_frame_params = data_frame_from_existing_parameter_set(input_param_dict["INPUT_FILE_PATH"])
     run_simulations(data_frame_params, confirm, input_param_dict["FILE_NAME"], file_path, parameter_path)

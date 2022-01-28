@@ -1,5 +1,5 @@
-{"ROOT_PATH": "/home/berger/Documents/Arbeit/PhD/data/UltrasensitivityCombined/", 
+{"ROOT_PATH": "path_to_output_folder/", 
 "FILE_NAME": "vary_growth_rate",
-"CODE_PATH":"/home/berger/Documents/Arbeit/PhD/MyCode/MechanisticCellCycle/cellcycle",
-"INPUT_FILE_PATH": "/home/berger/Documents/Arbeit/PhD/data/UltrasensitivityCombined/new_test/parameter_set.csv",
+"INPUT_FILE_PATH": "path_to_input_parameter_set/parameter_set.csv",
+"DATA_FOLDER_PATH": "path_to_folder_containing_the_downloaded_simulation_data/Data/",
 "MAKE_NEW_PARAMETER_SET": true}

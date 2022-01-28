@@ -23,14 +23,15 @@ project
 ```
 The simulations are written in python 3 and require that a python version of ``>=3.6`` is installed on the computer. This tutorial is written for the operating system Linux.
 ## Optional: Make a virtual environment
- It is recommended to first create a virtual environment in which all required packages will be installed and from which the code can be run. Open a terminal in the folder where you keep your virtual environments. In a Linux OS you can create a new virtual environment by typing in the terminal
+ It is recommended to first create a virtual environment in which all required packages will be installed and from which the code can be run. Open a terminal and create a new virtual environment by typing in the terminal
  ```console
- virtualenv example_virtual_env
+ virtualenv ~/.virtualenvs/virtual_env_cellcycle
  ```
- This virtual environment can be activated via
+ This will create a virtual environment in the folder ``.virtualenvs`` wich is located in the home folder. This virtual environment can be activated via
  ```console
-source example_virt_env/bin/activate
+source ~/.virtualenvs/virtual_env_cellcycle
 ```
+In the next step you can then make a package from the code in this virtual environment and whenever you want to use the code or jupyter notebooks you can do this from this virtual environment.
 
 ## Making a package from the project
 Now a package should be generated from the project in order to use the code and the jupyter notebooks. Open a terminal in the same directory as the file setup.py. Then activate your virtual environment as described in the previous section.
@@ -75,20 +76,7 @@ Then we can start jupyter notebook from the terminal via
 ```console
 jupyter notebook
 ```
-and use the ``cellcycle`` package that we have installed in this virtual environment. The cell cycle simulation can then be started via the following command:
-
-```console
-from cellcycle import mainClass
-
-mainClass.main('/path_to_input_params/input_params.json')
-```
-where the argument again specifies the file path to the input parameters that you have specified. If you run the simulations from the jupyter notebook, an additional parameter can be given that specifies whether, in case that there is already at simulation at the desired output file path, it should be overwritten or not. If we run 
-```console
-from cellcycle import mainClass
-
-mainClass.main('/path_to_input_params/input_params.json', confirm=False)
-```
-then the simulation stops if there is already a simulation at the desired destination. If ``confirm=True`` then the simulation starts in any case. 
+and use the ``cellcycle`` package that we have installed in this virtual environment. The jupyter notebook called ``LaunchNewSimu.ipynb`` can be used to run a simulation via a jupyter notebook. 
 
 ## What happens in the simulation
 
@@ -100,6 +88,12 @@ If you decide to run the simulations anyways, the folder will be overwritten wit
 If you want to run a simulation with new parameters set the ``MAKE_NEW_PARAMETER_SET`` to ``True`` and modify the parameters as described in the comments in the ParameterSet class.
 
 ## Data analysis via jupyter notebook
-The data analysis is done via jupyter notebooks that open the hdf5 files and create data frames that are used to analyse the simulations. 
+The data analysis is done via jupyter notebooks that open the hdf5 files and create data frames that are used to analyse the simulations. The jupyter notebooks can either be used to re-analyse existing data or to analyse a newly created dataset via the simulation as explained above. 
 
-For each figure in the paper we have made a separate jupyter notebook. To run it you first need to specify the file path at the beginning of each notebook to the location where the folder containing the data is located.
+### Download data from Zenodo and analyse it via jupyter notebook
+The data for all figures of the paper and SI can be downloaded on Zenodo. For each (sub)figure in the paper we have made a separate folder containing the data and a separate jupyter notebook for analysing this data. To run a jupyter notebook on the existing data, you first need to specify the file path to the folder named ``Data`` that contains the entire dataset of the article. You can do this by setting the parameter named ``DATA_FOLDER_PATH`` in the ``input_params.json`` file to the filepath leading to the folder ``Data`` in which the downloaded data is located. 
+
+Then you can simply run all jupyter notebooks, because by default they will analyse the data that is located at the ``DATA_FOLDER_PATH``. 
+
+### Analyse newly generate data via jupyter notebooks
+You can also analyse newly generated data using the jupyter notebooks. In this case the variable ``file_path`` in the jupyter notebook needs to be changed and set to the location where you stored your newly generated data. Be careful to put the same number of simulations with the same parameters at the file location in order to be able to analyse new simulations with the existing jupyter notebooks.

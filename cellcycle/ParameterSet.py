@@ -1,3 +1,4 @@
+from tkinter import E
 import numpy as np
 import pandas as pd
 import git
@@ -5,14 +6,17 @@ import git
 
 class ParameterSet:
     """This class is used to generate the parameter set of a simulation."""
-    def __init__(self, code_path):
+    def __init__(self):
         """Generates the parameter set of a simulation as soon as class is initiated."""
         # Parameters specifying the series number of the simulation
         self.n_series = 3 # total number of series
         self.id = np.arange(self.n_series) # makes an individual id for each of the n_series
 
         # Storing git version and commit identifier of code
-        self.git_version = git.Repo(code_path, search_parent_directories=True).head.object.hexsha
+        try:
+            self.git_version = git.Repo('.', search_parent_directories=True).head.object.hexsha
+        except:
+            print('no git repository for storing git SHA')
         
         # Parameters of simulation
         self.doubling_rate = 0.5 * np.ones(self.n_series) # in units 1/h, default parameters [low: 0.5, int: 60/35, high: 60/25, max:2.5]
