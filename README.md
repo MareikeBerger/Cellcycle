@@ -25,11 +25,11 @@ The simulations are written in python 3 and require that a python version of ``>
 ## Optional: Make a virtual environment
  It is recommended to first create a virtual environment in which all required packages will be installed and from which the code can be run. Open a terminal and create a new virtual environment by typing in the terminal
  ```console
- virtualenv ~/.virtualenvs/virtual_env_cellcycle
+ virtualenv ~/.virtualenvs/cellcycle
  ```
  This will create a virtual environment in the folder ``.virtualenvs`` wich is located in the home folder. This virtual environment can be activated via
  ```console
-source ~/.virtualenvs/virtual_env_cellcycle
+source ~/.virtualenvs/cellcycle/bin/activate
 ```
 In the next step you can then make a package from the code in this virtual environment and whenever you want to use the code or jupyter notebooks you can do this from this virtual environment.
 

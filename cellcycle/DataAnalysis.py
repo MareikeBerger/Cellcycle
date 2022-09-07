@@ -1,8 +1,10 @@
 import numpy as np
 from scipy.optimize import fsolve
+import pandas as pd
 
 from . import PlottingTools as plottingTools
 from . import DataStorage as dataStorage
+from . import MakeDataframe as makeDataframe
 
 light_blue = (122 / 255, 185 / 255, 218 / 255)
 pinkish_red = (247 / 255, 109 / 255, 109 / 255)
@@ -188,6 +190,9 @@ def complete_activation_rate(concentrations, parameter_dict, time, origin_densit
     return (parameter_dict.activation_rate_lipids + rate_dars1 + rate_dars2) * (parameter_dict.total_conc - concentrations) / \
                        (parameter_dict.michaelis_const_prod + parameter_dict.total_conc - concentrations)
 
+def synthesis_activation_rate(concentrations, parameter_dict):
+    print('synth activation rate')
+    return parameter_dict.rate_growth * (parameter_dict.total_conc-concentrations)
 
 def dars1_activation_rate(concentrations, parameter_dict, origin_density):
     return parameter_dict.activation_rate_dars1 * origin_density * (parameter_dict.total_conc - concentrations) / \
@@ -221,22 +226,21 @@ def plot_rates_together_simple_switch(myCellCycle, parameter_dict):
         print('could not plot_rates_together_simple_switch')
 
 
-def plot_rates_together_complex_switch(myCellCycle, parameter_dict):
+def plot_rates_together_complex_switch(series_path, myCellCycle, parameter_dict):
     n_time_steps = 6
     concentrations = np.arange(0, parameter_dict.total_conc, 0.01)
     list_concentrations = [concentrations for i in range(n_time_steps)]
     list_fractions = [concentrations/parameter_dict.total_conc for i in range(n_time_steps)]
     times = np.linspace(0, n_time_steps, n_time_steps)/n_time_steps / parameter_dict.doubling_rate
     print('times: ', times)
-    try:
-        origin_densities = np.linspace(2/myCellCycle.v_init_per_ori[-1], 1/myCellCycle.v_init_per_ori[-1], n_time_steps)
-        list_activation_rates_normalized = [complete_activation_rate(concentrations, parameter_dict, times[i], origin_densities[i])/parameter_dict.total_conc for i in range(n_time_steps)]
-        list_deactivation_rates_normalized = [complete_deactivation_rate(concentrations, parameter_dict, times[i], origin_densities[i])/parameter_dict.total_conc for i in range(n_time_steps)]
-        plottingTools.plot_series_of_two_arrays(parameter_dict.series_path, list_fractions, list_activation_rates_normalized, list_deactivation_rates_normalized,
-                                                r'f', r'$\frac{df}{dt}$',
-                                                'rate_comparison_complex', vlines=parameter_dict.frac_init, legend_vlines=r'$f^\ast$')
-    except:
-        print('could not plot_rates_together_complex_switch')
+    origin_densities = np.linspace(2/myCellCycle.v_init_per_ori[-1], 1/myCellCycle.v_init_per_ori[-1], n_time_steps)
+    list_activation_rates_normalized = [synthesis_activation_rate(concentrations, parameter_dict)/parameter_dict.total_conc for i in range(n_time_steps)]
+    # list_activation_rates_normalized = [complete_activation_rate(concentrations, parameter_dict, times[i], origin_densities[i])/parameter_dict.total_conc for i in range(n_time_steps)]
+    list_deactivation_rates_normalized = [complete_deactivation_rate(concentrations, parameter_dict, times[i], origin_densities[i])/parameter_dict.total_conc for i in range(n_time_steps)]
+    plottingTools.plot_series_of_two_arrays(series_path, list_fractions, list_activation_rates_normalized, list_deactivation_rates_normalized,
+                                            r'f', r'$\frac{df}{dt}$',
+                                            'rate_comparison_complex', vlines=parameter_dict.frac_init, legend_vlines=r'$f^\ast$')
+
 
 def plot_rates_together_simple_switch_synthesis(myCellCycle, parameter_dict):
     n_time_steps = 6
@@ -336,15 +340,14 @@ def plot_time_trace_gene_fraction(filepath_series, myCellCycle, parameter_dict):
                                                  legend3=[r'$[p](t)$', r'$[r](t)$'])
 
 def plot_time_trace_lipids(filepath_series, myCellCycle, parameter_dict):
-    title = r'$1/\tau_d=$' + str(np.round(parameter_dict.doubling_rate, 3)) + r', $K_{\rm p}=$' + str(
-        parameter_dict.michaelis_const_initiator) + ' nM' + r'$, K_{t}=$' + str(parameter_dict.diss_constant_sites) + ' nM' + \
-            r'$, N_{0}=$' + str(parameter_dict.n_c_max_0) + r'$, [p_{\rm f}]^\ast=$' + str(
-        parameter_dict.critical_free_conc) + ' nM'
     if parameter_dict.version_of_lipid_regulation == 'proteome_sector':
         lipid_conc = myCellCycle.lipid_conc
     else:
         lipid_conc = myCellCycle.N_lipids / myCellCycle.volume
     #myCellCycle.N_regulator_lipids / myCellCycle.volume
+    title = r'$1/\tau_d=$' + str(np.round(parameter_dict.doubling_rate, 3)) + r', $K_{\rm p}=$' + str(
+        parameter_dict.michaelis_const_initiator) + ' nM' + r'$, N_{0}=$' + str(parameter_dict.n_c_max_0) + r'$, \langle l \rangle=$' + str(np.round(np.mean(lipid_conc), 3)) \
+            + r'$, CV_l=$' + str(np.round(np.std(lipid_conc)/np.mean(lipid_conc), 3))
     plottingTools.four_subplots_aligned_n_series(filepath_series, [myCellCycle.time, myCellCycle.time],
                                                  [myCellCycle.volume],
                                                  [myCellCycle.N_lipids, myCellCycle.N_regulator_lipids],
@@ -610,3 +613,18 @@ def plot_charac_timescale_as_function_of_hill_coeff(parameters):
                                            [parameters.hill_coeff_regulator], [real_charac_time], r'Hill coefficient n',
                                            r'$\tau$', 'charact_timescale',
                                            labels=[r'n'])
+
+def calculate_average_active_fraction(data_frame, indx_cycle, indx_series):
+    time_traces_data_frame = pd.read_hdf(data_frame['path_dataset'].iloc[indx_series], key='dataset_time_traces')
+    time = np.array(time_traces_data_frame["time"])
+    active_fraction = np.array(time_traces_data_frame["active_fraction"])
+    v_d_data_frame = pd.read_hdf(data_frame['path_dataset'].iloc[indx_series], key='dataset_div_events')
+    t_start = v_d_data_frame['t_d'][indx_cycle]
+    print('t_start:', t_start)
+    print(1/data_frame["doubling_rate"].iloc[indx_series])
+    t_end =v_d_data_frame['t_d'][indx_cycle+1]
+    print('t_end:', t_end)
+    indx_start = np.where(time == t_start)[0][0]
+    indx_end = np.where(time == t_end)[0][0]
+    print('indices:', indx_start, indx_end)
+    return np.average(active_fraction[indx_start:indx_end])

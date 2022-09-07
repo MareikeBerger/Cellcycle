@@ -37,7 +37,7 @@ class CellCycleCombined:
         self.next_stoch_prod_time = self.parameter_dict.t_max
         self.active_fraction = np.zeros(self.time.size)
         self.active_conc = self.active_fraction * self.parameter_dict.total_conc
-        print('active fraction:', self.active_fraction)
+        self.print_verbose('active fraction: {}'.format(self.active_fraction))
         self.N_active = np.zeros(self.time.size)
         self.activation_rate_lipids_tot = np.ones(self.time.size) * self.parameter_dict.activation_rate_lipids
         self.deactivation_rate_datA_tot = np.ones(self.time.size) * self.parameter_dict.deactivation_rate_datA
@@ -46,7 +46,7 @@ class CellCycleCombined:
         self.deactivation_rate_rida_tot = np.ones(self.time.size) * self.parameter_dict.deactivation_rate_rida
         self.t_end_blocked = -1
         self.chromosome_dict = {"chromosome 0": Chromosome(self.parameter_dict, t_init=0, v_init=self.parameter_dict.v_init_th, active_rep=0, length=1,
-                                                           sites=self.parameter_dict.n_c_max_0, blocked=0, rida=0)}
+                                                           sites=self.parameter_dict.n_c_max_0, blocked=0, blocked_production=0, rida=0)}
         self.chromosome_tree = Tree()
         self.chromosome_tree.create_node("Chromosome 0", "chromosome 0")  # root node
 
@@ -67,6 +67,9 @@ class CellCycleCombined:
         self.stored_sites = []
         self.stored_lengths = []
         self.stored_times = []
+
+        # variable for aborting simulations
+        self.abort_simulation = False
 
         # store initiation times, concentrations, numbers of dnaa
         self.t_init = []
@@ -109,6 +112,7 @@ class CellCycleCombined:
                              "activation_rate_dars2_tot": self.activation_rate_dars2_tot,
                              "activation_rate_dars1_tot": self.activation_rate_dars1_tot,
                              "deactivation_rate_rida_tot": self.deactivation_rate_rida_tot,
+                             "abort_simulation": self.abort_simulation
                              })
 
     def makeDataFrameOfInitEvents(self):
@@ -125,16 +129,15 @@ class CellCycleCombined:
             "v_b_before_init": self.v_b_before_init,
             "lipid_conc_init": self.lipid_conc_init
         })
-         print('data_frame initiation event', df_init)
+         self.print_verbose('data_frame initiation event {}'.format(df_init))
          return df_init
 
     def makeDataFrameOfDivisionEvents(self):
-        print('dataframe in make division event')
-        print(pd.DataFrame(self.list_of_tuples_v_b_v_d, columns=['v_b', 'v_d', 't_d']))
-        return pd.DataFrame(self.list_of_tuples_v_b_v_d, columns=['v_b', 'v_d', 't_d'])
+        division_data_frame = pd.DataFrame(self.list_of_tuples_v_b_v_d, columns=['v_b', 'v_d', 't_d'])
+        self.print_verbose('dataframe in make division event {}'.format(division_data_frame))
+        return division_data_frame
 
     def updateVariablesUsingDataframe(self, dataframe):
-        print('not finished')
         self.min_frac = dataframe["min_frac"]
         self.time = dataframe["time"]
         self.volume = dataframe["volume"]
@@ -165,6 +168,10 @@ class CellCycleCombined:
         self.frac_active_init = dataframe["frac_active_init"]
         self.n_active_init = dataframe["n_active_init"]
         self.v_b = dataframe["v_b"]
+
+    def print_verbose(self, input):
+        if self.parameter_dict.verbose == 1:
+            print(input)
 
     def calculate_active_frac(self, volume, total_conc, diss_const_activation, diss_const_deactivation, activation_rate, deactivation_rate):
         a = activation_rate * volume - deactivation_rate
@@ -227,7 +234,7 @@ class CellCycleCombined:
             basal_rate_initiator = self.parameter_dict.basal_rate_initiator * gene_fraction * self.volume[n_step]
             for node_i in self.chromosome_tree.expand_tree(mode=2):
                 if self.chromosome_tree.depth(node_i) == self.chromosome_tree.depth():
-                    if self.parameter_dict.block_production == 1 and self.chromosome_dict[node_i].check_blocked(
+                    if self.parameter_dict.block_production == 1 and self.chromosome_dict[node_i].check_blocked_production(
                             time) == True:
                         produce_proteins = 0
 
@@ -280,7 +287,7 @@ class CellCycleCombined:
                 noise_reg = np.random.normal(0,1) * np.sqrt(2 * self.parameter_dict.noise_strength_total_dnaA * self.parameter_dict.time_step)
             for node_i in self.chromosome_tree.expand_tree(mode=2):
                 if self.chromosome_tree.depth(node_i) == self.chromosome_tree.depth():
-                    if self.parameter_dict.block_production == 1 and self.chromosome_dict[node_i].check_blocked(
+                    if self.parameter_dict.block_production == 1 and self.chromosome_dict[node_i].check_blocked_production(
                             time) == True:
                         produce_proteins = 0
                     if produce_proteins == 1:
@@ -317,12 +324,8 @@ class CellCycleCombined:
                             exit()
         if self.parameter_dict.external_oscillations == 1:
             if self.parameter_dict.continuous_oscillations == 1:
-                if self.parameter_dict.underexpression_oscillations == 1:
-                    dn_init_ext = dn_init_ext + self.parameter_dict.offset_oscillations * gene_fraction * self.volume[
+                dn_init_ext = self.parameter_dict.offset_oscillations * gene_fraction * self.volume[
                         n_step] * self.parameter_dict.time_step + self.parameter_dict.amplitude_oscillations * (np.cos(time * 2 * np.pi / self.parameter_dict.period_oscillations) + 1) \
-                                  * self.parameter_dict.time_step
-                else:
-                    dn_init_ext = self.parameter_dict.amplitude_oscillations * (np.cos(time * 2 * np.pi / self.parameter_dict.period_oscillations) + 1) \
                                   * self.parameter_dict.time_step
             else:
                 if np.cos(time * 2 * np.pi / self.parameter_dict.period_oscillations) >= 0:
@@ -340,11 +343,8 @@ class CellCycleCombined:
         dn = 0
         for node_i in self.chromosome_tree.expand_tree(mode=2):
             if self.chromosome_tree.depth(node_i) == self.chromosome_tree.depth():
-                if self.chromosome_dict[node_i].check_blocked(time) == False:
+                if not self.chromosome_dict[node_i].check_blocked_production(time):
                     dn = dn + self.parameter_dict.rate_growth * self.parameter_dict.n_c_max_0 * self.parameter_dict.time_step
-                    print('This chromosome produced dnaA: ', node_i,
-                          self.parameter_dict.rate_growth * self.parameter_dict.n_c_max_0 * self.parameter_dict.time_step)
-                # print('dn in synthesis', dn)
         self.N_init[n_step] = self.N_init[n_step - 1] + dn
 
     def produce_lipids(self, n_step):
@@ -375,9 +375,7 @@ class CellCycleCombined:
                         n_step - 1]) / self.parameter_dict.michaelis_const_lipids) ** self.parameter_dict.hill_coeff_lipids) * self.parameter_dict.time_step
                 elif self.parameter_dict.version_of_lipid_regulation == 'constit':
                     dn_lipids = dn_lipids + self.parameter_dict.basal_rate_lipids * self.parameter_dict.time_step
-                # else:
-                #     print('neither of the lipid production model versions is fulfilled, stop and check this!')
-                #     exit()
+
         if self.parameter_dict.version_of_lipid_regulation == 'prop_to_v':
             dn_lipids = dn_lipids + self.parameter_dict.basal_rate_lipids * self.parameter_dict.time_step * self.volume[
                 n_step - 1] ** (1)
@@ -466,15 +464,16 @@ class CellCycleCombined:
             self.v_b_before_init.append(self.v_b[-1])
         except:
             self.v_b_before_init.append(0)
-            print('last birth volume could not be obtained, this is v_b: ', self.v_b)
+            self.print_verbose('last birth volume could not be obtained, this is v_b: {}'.format(self.v_b))
 
     def initiate_replication(self, n_step, time, volume):
-        print('Replication is initiated: critical concentration is reached ', self.active_conc[n_step])
+        self.print_verbose('Replication is initiated: critical concentration is reached {}'.format(self.active_conc[n_step]))
         self.store_initiation_event(n_step)
         self.n_ori[n_step] = 2 * self.n_ori[n_step - 1]
         self.N_c_max = 2 * self.N_c_max
         tree_copy = Tree(self.chromosome_tree.subtree(self.chromosome_tree.root), deep=True)
-        tree_copy.show()
+        if self.parameter_dict.verbose == 1:
+            tree_copy.show()
         n_chrom = 0
         depth_tree = tree_copy.depth()
         new_generation_depth = depth_tree + 1
@@ -484,24 +483,28 @@ class CellCycleCombined:
                     name_i = "chromosome " + str(new_generation_depth) + str(n_chrom)
                     self.chromosome_tree.create_node("Chromosome " + str(new_generation_depth) + str(n_chrom), name_i,
                                                      parent=node_i)
-                    print('depth of', name_i, ': ', self.chromosome_tree.depth(name_i))
+                    self.print_verbose('depth of {} :'.format(name_i, self.chromosome_tree.depth(name_i)))
                     if sibling == 0:  # equal to parent chromosome, but new initiation time
                         chromosome = self.chromosome_dict[node_i]
                         chromosome.set_t_end_blocked(time + self.parameter_dict.period_blocked)
+                        chromosome.set_t_end_blocked_production(time + self.parameter_dict.period_blocked_production)
                         blocked = chromosome.check_blocked(time)
-                        print('now blocked: ', blocked)
-                        # Chromosome(self.parameter_set, self.i_series, t_init=time, active_rep=self.chromosome_dict[node_i].active_replication,
-                        #                     length=self.chromosome_dict[node_i].length[-1], sites=self.chromosome_dict[node_i].sites[-1])
+                        blocked_production = chromosome.check_blocked_production(time)
+                        self.print_verbose('now blocked: {} and blocked production: {}'.format(blocked, blocked_production))
                     else:  # active replicating chromosome, length 0
                         chromosome = Chromosome(self.parameter_dict,
-                                                t_end_blocked=time + self.parameter_dict.period_blocked, t_init=time, v_init=volume)
+                                                t_end_blocked=time + self.parameter_dict.period_blocked,
+                                                t_end_blocked_production = time + self.parameter_dict.period_blocked_production,
+                                                t_init=time, v_init=volume)
                         blocked = chromosome.check_blocked(time)
-                        print('now blocked: ', blocked)
+                        blocked_production = chromosome.check_blocked_production(time)
+                        self.print_verbose('now blocked: {} and blocked production: {}'.format(blocked, blocked_production))
                     self.chromosome_dict.update({name_i: chromosome})
-                    print('length, active and blocked of created chromosome: ', self.chromosome_dict[name_i].length[-1],
-                          self.chromosome_dict[name_i].active_replication, self.chromosome_dict[name_i].blocked)
+                    self.print_verbose('length, active and blocked of created chromosome: {} {} {}'.format(self.chromosome_dict[name_i].length[-1],
+                          self.chromosome_dict[name_i].active_replication, self.chromosome_dict[name_i].blocked))
                     n_chrom = n_chrom + 1
-        self.chromosome_tree.show()
+        if self.parameter_dict.verbose == 1:
+            self.chromosome_tree.show()
 
     def find_next_div_time(self, n_step):
         next_div_time = self.parameter_dict.t_max
@@ -519,16 +522,12 @@ class CellCycleCombined:
         return next_div_time
 
     def store_chromosomes(self, tree):
-        print('dict before deletion: ', self.chromosome_dict)
         for node_i in tree.expand_tree(mode=2):
-            print('node in store_chromosomes', node_i)
             if tree.depth(node_i) == tree.depth():
-                print('node stored', node_i)
                 self.stored_lengths.append(self.chromosome_dict[node_i].length)
                 self.stored_sites.append(self.chromosome_dict[node_i].sites)
                 self.stored_times.append(self.chromosome_dict[node_i].time)
             del self.chromosome_dict[node_i]
-        print('dict after deletion: ', self.chromosome_dict)
 
     def return_division_position_error(self):
         if self.parameter_dict.cv_division_position == 0:
@@ -554,10 +553,8 @@ class CellCycleCombined:
             if self.parameter_dict.single_division_error == 1:
                 if len(self.t_div) == self.parameter_dict.cycle_with_error:
                     rel_div_position_error = + self.parameter_dict.cv_division_position
-                    print('length of t_div was one and division volume with error', self.t_div)
                     self.volume[n_step] = self.volume[n_step] / 2 + rel_div_position_error * self.volume[n_step]
                 else:
-                    print('length of t_div was not one and division volume without error', self.t_div)
                     self.volume[n_step] = self.volume[n_step] / 2
             else:
                 rel_div_position_error = self.return_division_position_error()
@@ -698,9 +695,27 @@ class CellCycleCombined:
         new_tree.create_node('Chromosome 37', 'chromosome 37', parent='chromosome 23')
         if depth == 3:
             return new_tree
+        new_tree.create_node('Chromosome 40', 'chromosome 40', parent='chromosome 30')
+        new_tree.create_node('Chromosome 41', 'chromosome 41', parent='chromosome 30')
+        new_tree.create_node('Chromosome 42', 'chromosome 42', parent='chromosome 31')
+        new_tree.create_node('Chromosome 43', 'chromosome 43', parent='chromosome 31')
+        new_tree.create_node('Chromosome 44', 'chromosome 44', parent='chromosome 32')
+        new_tree.create_node('Chromosome 45', 'chromosome 45', parent='chromosome 32')
+        new_tree.create_node('Chromosome 46', 'chromosome 46', parent='chromosome 33')
+        new_tree.create_node('Chromosome 47', 'chromosome 47', parent='chromosome 33')
+        new_tree.create_node('Chromosome 48', 'chromosome 48', parent='chromosome 34')
+        new_tree.create_node('Chromosome 49', 'chromosome 49', parent='chromosome 34')
+        new_tree.create_node('Chromosome 50', 'chromosome 50', parent='chromosome 35')
+        new_tree.create_node('Chromosome 51', 'chromosome 51', parent='chromosome 35')
+        new_tree.create_node('Chromosome 52', 'chromosome 52', parent='chromosome 36')
+        new_tree.create_node('Chromosome 53', 'chromosome 53', parent='chromosome 36')
+        new_tree.create_node('Chromosome 54', 'chromosome 54', parent='chromosome 37')
+        new_tree.create_node('Chromosome 55', 'chromosome 55', parent='chromosome 37')
         if depth > 3:
             print('depth of chromosome tree after division was bigger than 3')
-            exit()
+            self.abort_simulation = True
+            return new_tree
+            # exit()
 
     def update_dictionary(self, surviving_tree, new_tree):
         dict_old_new_keys = {'chromosome 10': 'chromosome 0', 'chromosome 20': 'chromosome 10',
@@ -712,7 +727,7 @@ class CellCycleCombined:
                              'chromosome 44': 'chromosome 34', 'chromosome 45': 'chromosome 35',
                              'chromosome 46': 'chromosome 36', 'chromosome 47': 'chromosome 37'}
         for node_i in surviving_tree.expand_tree(mode=2):
-            print('old key, new key: ', node_i, dict_old_new_keys[node_i])
+            # print('old key, new key: ', node_i, dict_old_new_keys[node_i])
             self.chromosome_dict[dict_old_new_keys[node_i]] = self.chromosome_dict.pop(node_i)
 
     def calculate_new_division_volume(self):
@@ -733,32 +748,41 @@ class CellCycleCombined:
         if self.parameter_dict.independent_division_cycle == 1:
             self.next_division_volume = self.calculate_new_division_volume()
         #  split tree in two
-        self.chromosome_tree.show()
+        if self.parameter_dict.verbose == 1:
+            self.chromosome_tree.show()
         surviving_tree = self.chromosome_tree.subtree('chromosome 10')
         deleted_tree = self.chromosome_tree.subtree('chromosome 11')
-        print('division time: ', self.time[n_step], 'new tree after division', self.chromosome_dict[surviving_tree.root].length)
-        surviving_tree.show()
-        deleted_tree.show()
+        self.print_verbose('division time: {} and new tree after division {}'.format(self.time[n_step], self.chromosome_dict[surviving_tree.root].length))
+        if self.parameter_dict.verbose == 1:
+            surviving_tree.show()
+            deleted_tree.show()
         # store and delete second half of tree, delete root
         self.store_chromosomes(deleted_tree)
         del self.chromosome_dict['chromosome 0']
-        print('dict after deletion of root: ', self.chromosome_dict)
+        self.print_verbose('dict after deletion of root: {}'.format(self.chromosome_dict))
         # rename dictionary and nodes in tree
-        print('Depth of tree: ', surviving_tree.depth())
+        self.print_verbose('Depth of tree: {}'.format(surviving_tree.depth()))
         new_tree = self.returns_chromosome_tree(surviving_tree.depth())
-        surviving_tree.show()
-        new_tree.show()
+        if self.abort_simulation == 1:
+            return
+        if self.parameter_dict.verbose == 1:
+            surviving_tree.show()
+            new_tree.show()
         self.update_dictionary(surviving_tree, new_tree)
         self.chromosome_tree = new_tree
 
     # From ultrasensitivity
     def calculate_active_concentration_and_fraction(self, n_step):
+        if self.parameter_dict.intrinsic_switch_noise == 1:
+            intrinsic_switch_noise = np.random.normal(0, 1) * np.sqrt(self.parameter_dict.time_step * 2 * self.parameter_dict.noise_strength_switch)
+        else:
+            intrinsic_switch_noise = 0
         self.total_conc[n_step] = self.parameter_dict.total_conc
         self.active_conc[n_step] = self.active_conc[n_step - 1] + (
                 self.calculate_activation_rate(n_step, self.total_conc[n_step])
                 - self.calculate_deactivation_rate(n_step)
                 + self.calculate_production_rate_synthesis(
-            n_step, self.total_conc[n_step])) * self.parameter_dict.time_step
+            n_step, self.total_conc[n_step])) * self.parameter_dict.time_step + intrinsic_switch_noise
         if self.active_conc[n_step] < 0:
             self.active_conc[n_step] = 0
         self.active_fraction[n_step] = self.active_conc[n_step] / self.total_conc[n_step]
@@ -766,6 +790,10 @@ class CellCycleCombined:
     # From ultrasensitivity
     def calculate_active_concentration_and_fraction_init_explicitly_expressed(self, n_step, noise_dict):
         # the main difference to the non-explicit version is that here the change in the active number of DnaA includes the noise production term from the total DnaA production
+        if self.parameter_dict.intrinsic_switch_noise == 1:
+            intrinsic_switch_noise = np.random.normal(0, 1) * np.sqrt(self.parameter_dict.time_step * 2 * self.parameter_dict.noise_strength_switch)
+        else:
+            intrinsic_switch_noise = 0
         self.total_conc[n_step] = self.N_init[n_step - 1] / self.volume[n_step - 1]
         self.N_active[n_step] = self.N_active[n_step - 1] + (
                 self.calculate_activation_rate(n_step, self.total_conc[n_step])
@@ -775,16 +803,16 @@ class CellCycleCombined:
                                 + noise_dict['noise_init']
         if self.N_active[n_step] < 0:
             self.N_active[n_step] = 0
-        self.active_conc[n_step] = self.N_active[n_step] / self.volume[n_step - 1]
+        self.active_conc[n_step] = self.N_active[n_step] / self.volume[n_step - 1]+ intrinsic_switch_noise
         self.active_fraction[n_step] = self.active_conc[n_step] / self.total_conc[n_step]
 
     def calculate_activation_rate(self, n_step, total_conc):
         rate_0 = 0
         rate_1 = 0
         aspect_ratio_v = 1
+        oric_factor = 1
         for node_i in self.chromosome_tree.expand_tree(mode=2):
             if self.chromosome_tree.depth(node_i) == self.chromosome_tree.depth():
-                # print('contribution from dars2', self.chromosome_dict[node_i].n_dars2 * self.activation_rate_dars2)
                 rate_0 = rate_0 + self.chromosome_dict[node_i].n_dars2 * self.parameter_dict.activation_rate_dars2 + \
                          self.chromosome_dict[node_i].n_dars2_high_activity * self.parameter_dict.high_rate_dars2
                 rate_1 = rate_1 + self.chromosome_dict[node_i].n_dars1 * self.parameter_dict.activation_rate_dars1
@@ -793,14 +821,15 @@ class CellCycleCombined:
         if self.parameter_dict.surface_area_to_vol_const == 0:
             aspect_ratio_v = 2 * (self.parameter_dict.aspect_ratio + 1) / self.parameter_dict.aspect_ratio * (
                     self.parameter_dict.aspect_ratio * np.pi / self.volume[n_step - 1]) ** (1 / 3) / 5.47
-            print('aspect ratio', aspect_ratio_v)
+        if self.parameter_dict.lipid_oric_dependent ==1:
+            oric_factor = self.n_ori[n_step - 1] / self.volume[n_step - 1]
         if self.parameter_dict.model_lipids_explicitly == 0:
-            activation_rate_lipids = self.parameter_dict.activation_rate_lipids * aspect_ratio_v
+            activation_rate_lipids = self.parameter_dict.activation_rate_lipids * aspect_ratio_v * oric_factor
         else:
             if self.parameter_dict.version_of_lipid_regulation == 'proteome_sector':
-                activation_rate_lipids = self.lipid_conc[n_step - 1] * aspect_ratio_v
+                activation_rate_lipids = self.lipid_conc[n_step - 1] * aspect_ratio_v * oric_factor
             else:
-                activation_rate_lipids = self.N_lipids[n_step - 1] / self.volume[n_step - 1] * aspect_ratio_v
+                activation_rate_lipids = self.N_lipids[n_step - 1] / self.volume[n_step - 1] * aspect_ratio_v * oric_factor
         self.activation_rate_lipids_tot[n_step] = activation_rate_lipids
         rate = (activation_rate_lipids * aspect_ratio_v + (rate_0 + rate_1) / self.volume[n_step - 1]) * (
                 total_conc - self.active_conc[n_step - 1]) / (
@@ -839,20 +868,16 @@ class CellCycleCombined:
         return rate
 
     def create_one_cell_cycle_volume_array(self):
-        print('create array')
         indx_min = np.where(self.volume == self.v_b[-2])[0][0]
         indx_max = np.where(self.volume == self.v_b[-1])[0][0]
-        print(indx_min, indx_max)
         cell_cycle_volumes = self.volume[indx_min:indx_max]
         cell_cycle_n_oris = self.n_ori[indx_min:indx_max]
         cell_cycle_conc = self.active_conc[indx_min:indx_max]
         size_final = 15
         dstep = int(cell_cycle_volumes.size / size_final)
-        print(cell_cycle_volumes.size, cell_cycle_n_oris)
         cell_cycle_volumes_short = cell_cycle_volumes[1::dstep]
         cell_cycle_n_oris_short = cell_cycle_n_oris[1::dstep]
         cell_cycle_conc_short = cell_cycle_conc[1::dstep]
-        # print(cell_cycle_volumes_short, cell_cycle_n_oris_short)
         return cell_cycle_volumes_short, cell_cycle_n_oris_short, cell_cycle_conc_short
 
     def plot_rates_together(self, filepath, volumes=np.array([]), n_oris=np.array([])):
@@ -860,10 +885,8 @@ class CellCycleCombined:
         series_rates = []
         series_conc = []
         if volumes.size == 0:
-            print('take volumes from cell cycle')
             volumes, n_oris, conc = self.create_one_cell_cycle_volume_array()
             self.min_frac = np.amin(conc) / self.parameter_dict.total_conc
-            print('minimal concentration', self.min_frac)
         rate_production = self.calculate_activation_rate(concentrations)
         series_rates.append(rate_production)
         series_conc.append(concentrations)
@@ -916,14 +939,18 @@ class CellCycleCombined:
             if self.decide_whether_initiate_rep(n_step):
                 self.initiate_replication(n_step, self.time[n_step], self.volume[n_step])
                 self.t_end_blocked = self.time[n_step] + self.parameter_dict.period_blocked
-                print('new t end blocked: ', self.t_end_blocked)
+                self.print_verbose('new t end blocked: {}'.format(self.t_end_blocked))
             else:
                 self.n_ori[n_step] = self.n_ori[n_step - 1]
             self.next_div_t = self.find_next_div_time(n_step)
             if self.time[n_step] >= self.next_div_t:
                 self.divide(n_step)
+                if self.abort_simulation:
+                    print('cell cycle simulation is aborted now')
+                    break
                 self.calculate_free_dnaA_concentration(n_step)
             self.check_whether_once_lipid_conc_perturb(n_step)
+
         # self.determine_min_frac()
         self.makeDataFrameOfCellCycle()
         return

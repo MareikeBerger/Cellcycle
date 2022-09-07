@@ -4,6 +4,7 @@ from .ParameterSet import ParameterSet
 from . import DataAnalysis as dataAnalysis
 from . import DataStorage as dataStorage
 from . import FilePathTools as filePathTools
+from . import optimisation as optimisation
 
 import numpy as np
 import pandas as pd
@@ -44,6 +45,44 @@ def data_frame_from_new_parameter_set():
     parameter_set = ParameterSet()
     return parameter_set.parameter_set_df
 
+def loop_over_simulations(data_frame_params, series_paths, dataset_paths):
+    # Loop over all series and run a cell cycle for each series
+    for i_series in range(data_frame_params["n_series"][0]):
+        # make a dictionary from the parameters set with index i_series
+        parameter_dict = data_frame_params.iloc[i_series]
+
+        # create the directory for the simulation i_series and save parameters as json
+        filePathTools.make_directory(series_paths[i_series])
+        filePathTools.print_dict_to_json(parameter_dict, series_paths[i_series])
+
+        # make new instance of cell cycle class and run it
+        if data_frame_params.iloc[i_series]["optimisation_simu"]:
+            run_optimisation_simulation(dataset_paths, parameter_dict)
+        else:
+            myCellCycle = CellCycleCombined(parameter_dict)
+            myCellCycle.run_cell_cycle()
+
+            # make data frames out of data arrays and store data in hdf5 file for each series
+            dataStorage.saveDataFrameToHdf5(dataset_paths[i_series], myCellCycle.makeDataFrameOfCellCycle(),
+                                            'dataset_time_traces')
+            dataStorage.saveDataFrameToHdf5(dataset_paths[i_series], myCellCycle.makeDataFrameOfInitEvents(),
+                                            'dataset_init_events')
+            v_b_v_d_dataframe = myCellCycle.makeDataFrameOfDivisionEvents()
+            dataStorage.saveDataFrameToHdf5(dataset_paths[i_series], v_b_v_d_dataframe, 'dataset_div_events')
+            # plot a few variables as a function of the simulation time
+            plot_time_traces_of_simulation(parameter_dict, series_paths[i_series], myCellCycle, v_b_v_d_dataframe)
+
+
+def run_optimisation_simulation(dataset_paths, parameter_dict):
+    print('start optimisation')
+    # make new instance of cell cycle class and run it
+    min_crit_frac = optimisation.optimise_golden(a=0, c=1, parameter_dict=parameter_dict, tol=0.05)
+    print('Optimal crit frac: ', min_crit_frac)
+
+    # make data frames out of optimal critical fraction and store data in hdf5 file
+    dataStorage.saveDataFrameToHdf5(dataset_paths[0], pd.DataFrame({'opt_crit_frac': [min_crit_frac]}),
+                                    'dataset_time_traces')
+
 def run_simulations(data_frame_params, confirm, file_name, file_path, parameter_path):
     # Based on given root_path, file_name makes paths for storing data
     series_names = filePathTools.make_series_names(file_name, data_frame_params["id"])
@@ -55,28 +94,7 @@ def run_simulations(data_frame_params, confirm, file_name, file_path, parameter_
         print('start with simulation')
         # print parameter set to file
         filePathTools.print_parameter_set_to_file(file_path, parameter_path, data_frame_params)
-
-        # Loop over all series and run a cell cycle for each series
-        for i_series in range(data_frame_params["n_series"][0]): 
-            # make a dictionary from the parameters set with index i_series
-            parameter_dict = data_frame_params.iloc[i_series]  
-
-            # create the directory for the simulation i_series and save parameters as json
-            filePathTools.make_directory(series_paths[i_series])
-            filePathTools.print_dict_to_json(parameter_dict, series_paths[i_series])
-
-            # make new instance of cell cycle class and run it
-            myCellCycle = CellCycleCombined(parameter_dict)
-            myCellCycle.run_cell_cycle()
-
-            # make data frames out of data arrays and store data in hdf5 file for each series
-            dataStorage.saveDataFrameToHdf5(dataset_paths[i_series], myCellCycle.makeDataFrameOfCellCycle(), 'dataset_time_traces')
-            dataStorage.saveDataFrameToHdf5(dataset_paths[i_series], myCellCycle.makeDataFrameOfInitEvents(), 'dataset_init_events')
-            v_b_v_d_dataframe = myCellCycle.makeDataFrameOfDivisionEvents()
-            dataStorage.saveDataFrameToHdf5(dataset_paths[i_series], v_b_v_d_dataframe, 'dataset_div_events')
-            # plot a few variables as a function of the simulation time
-            plot_time_traces_of_simulation(parameter_dict, series_paths[i_series], myCellCycle, v_b_v_d_dataframe)
-
+        loop_over_simulations(data_frame_params, series_paths, dataset_paths)
     else:
         print('No new simulation was started')
 
@@ -91,11 +109,17 @@ def plot_time_traces_of_simulation(parameter_dict, series_path, myCellCycle, v_b
     elif parameter_dict.version_of_model == 'switch':
         dataAnalysis.plot_time_trace_number_initiators(series_path, myCellCycle, parameter_dict)
         dataAnalysis.plot_time_trace_active_initiator_concentration(series_path, myCellCycle, parameter_dict)
+        # dataAnalysis.plot_time_trace_switch_titration_combined(series_path, myCellCycle, parameter_dict)
         
     elif parameter_dict.version_of_model == 'switch_critical_frac':
         dataAnalysis.plot_time_trace_number_initiators(series_path, myCellCycle, parameter_dict)
         dataAnalysis.plot_time_trace_initiator_fraction(series_path, myCellCycle, parameter_dict)
-    plottingTools.plot_two_arrays(series_path, myCellCycle.t_init, myCellCycle.v_init_per_ori, r'$t$', r'$v^\ast$', 'init_volume_over_time')
+
+    if parameter_dict.model_lipids_explicitly == 1:
+        dataAnalysis.plot_time_trace_lipids(series_path, myCellCycle, parameter_dict)
+
+    plottingTools.plot_two_arrays(series_path, myCellCycle.t_init, myCellCycle.v_init_per_ori, r'$t$', r'$v^\ast$', 'init_volume_over_time', cv=1)
+    dataAnalysis.plot_rates_together_complex_switch(series_path, myCellCycle, parameter_dict)
 
 def extract_variables_from_input_params_json(path_to_json):
     with open(path_to_json) as json_file:

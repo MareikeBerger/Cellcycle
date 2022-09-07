@@ -15,8 +15,8 @@ def plot_two_arrays(file_paths, xaxis, yaxis, x_axis_label, y_axis_label, plot_l
     if cv==0:
         plt.plot(xaxis, yaxis)
     else:
-        mean = np.mean(yaxis)
-        cv = np.std(yaxis)/mean
+        mean = np.mean(yaxis[10:])
+        cv = np.std(yaxis[10:])/mean
         plt.plot(xaxis, yaxis,  label=r'$\mu={}, CV={}$'.format(np.round(mean, 3), np.round(cv, 3)))
         for item in range(len(theory)):
             plt.plot(xaxis, theory[item] * np.ones(xaxis.size), label=label_th[item])
